@@ -1,0 +1,1447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TokenScope — AI Prompt Token Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #070C1A;
+    --surface: #0F1628;
+    --surface2: #162040;
+    --surface3: #1E2D50;
+    --border: #1E2D50;
+    --border2: #2A3D60;
+    --cyan: #00D4FF;
+    --cyan-dim: #004D5C;
+    --amber: #FFB800;
+    --amber-dim: #3D2C00;
+    --red: #FF3B5C;
+    --red-dim: #3D0010;
+    --green: #00E5A0;
+    --green-dim: #003D2A;
+    --purple: #9B59FF;
+    --text: #E8EDF5;
+    --text2: #8892AA;
+    --text3: #5A6580;
+    --gpt-color: #10A37F;
+    --claude-color: #D97706;
+    --gemini-color: #4285F4;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Grotesk', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Animated grid bg */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0, 212, 255, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 212, 255, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Glow orbs */
+  .orb {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(80px);
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.35;
+  }
+  .orb-1 { width: 400px; height: 400px; background: radial-gradient(circle, #00D4FF22, transparent); top: -100px; left: -100px; }
+  .orb-2 { width: 300px; height: 300px; background: radial-gradient(circle, #9B59FF22, transparent); bottom: 100px; right: -50px; }
+
+  #app { position: relative; z-index: 1; max-width: 1400px; margin: 0 auto; padding: 24px 20px; }
+
+  /* HEADER */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .logo-icon {
+    width: 42px; height: 42px;
+    background: linear-gradient(135deg, #00D4FF, #9B59FF);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+  }
+  .logo-text { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+  .logo-text span { color: var(--cyan); }
+  .logo-sub { font-size: 11px; color: var(--text3); letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; }
+
+  .header-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text2);
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 20px;
+    padding: 6px 14px;
+  }
+  .pulse-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
+
+  /* MAIN LAYOUT */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+
+  @media (max-width: 900px) {
+    .main-grid { grid-template-columns: 1fr; }
+  }
+
+  /* CARDS */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+    opacity: 0.3;
+  }
+  .card-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text3);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-title .icon { color: var(--cyan); font-size: 14px; }
+
+  /* INPUT PANEL */
+  .input-panel { display: flex; flex-direction: column; }
+
+  #prompt-input {
+    width: 100%;
+    min-height: 280px;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    padding: 16px;
+    color: var(--text);
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+    line-height: 1.7;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.2s;
+    margin-bottom: 14px;
+  }
+  #prompt-input:focus { border-color: var(--cyan); }
+  #prompt-input::placeholder { color: var(--text3); }
+
+  .stats-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .stat-pill {
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 10px 12px;
+    text-align: center;
+  }
+  .stat-pill .val {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--cyan);
+  }
+  .stat-pill .lbl {
+    font-size: 10px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-top: 2px;
+  }
+
+  .action-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .btn {
+    padding: 10px 18px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.2s;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--cyan), #0099DD);
+    color: #000;
+  }
+  .btn-primary:hover { opacity: 0.85; transform: translateY(-1px); }
+  .btn-ghost {
+    background: var(--surface2);
+    color: var(--text2);
+    border: 1px solid var(--border2);
+  }
+  .btn-ghost:hover { border-color: var(--cyan); color: var(--cyan); }
+
+  .output-config {
+    margin-top: 14px;
+    padding: 14px;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+  }
+  .output-config label {
+    font-size: 12px;
+    color: var(--text2);
+    display: block;
+    margin-bottom: 8px;
+  }
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  input[type=range] {
+    flex: 1;
+    accent-color: var(--cyan);
+    height: 4px;
+  }
+  .slider-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--cyan);
+    min-width: 50px;
+    text-align: right;
+  }
+
+  /* MODEL CARDS */
+  .models-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  @media (max-width: 700px) { .models-grid { grid-template-columns: 1fr; } }
+
+  .model-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 18px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s;
+  }
+  .model-card.safe { border-color: rgba(0,229,160,0.3); }
+  .model-card.warn { border-color: rgba(255,184,0,0.4); }
+  .model-card.danger { border-color: rgba(255,59,92,0.4); }
+
+  .model-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .model-name-row { display: flex; align-items: center; gap: 8px; }
+  .model-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .model-name { font-size: 15px; font-weight: 700; }
+  .model-family { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 1px; }
+
+  .status-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    text-transform: uppercase;
+  }
+  .badge-safe { background: var(--green-dim); color: var(--green); }
+  .badge-warn { background: var(--amber-dim); color: var(--amber); }
+  .badge-danger { background: var(--red-dim); color: var(--red); }
+
+  .token-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 6px;
+  }
+  .token-label { font-size: 11px; color: var(--text3); }
+  .token-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .token-val.input-t { color: var(--cyan); }
+  .token-val.output-t { color: var(--purple); }
+  .token-val.total-t { color: var(--text); }
+  .token-val.remain-t { color: var(--green); }
+
+  .progress-bar-wrap {
+    margin: 12px 0;
+    height: 6px;
+    background: var(--surface3);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.5s ease;
+    position: relative;
+  }
+  .fill-safe { background: linear-gradient(90deg, var(--green), #00B880); }
+  .fill-warn { background: linear-gradient(90deg, var(--amber), #CC9200); }
+  .fill-danger { background: linear-gradient(90deg, var(--red), #CC2040); }
+
+  .context-stats {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    margin-top: 6px;
+  }
+  .ctx-pct { font-family: 'JetBrains Mono', monospace; font-weight: 600; }
+  .ctx-window { color: var(--text3); }
+
+  .divider { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+
+  .chart-wrap {
+    height: 100px;
+    display: flex;
+    justify-content: center;
+    margin-top: 8px;
+  }
+  .chart-wrap canvas { max-width: 100px !important; max-height: 100px !important; }
+
+  /* RIGHT PANEL — summary */
+  .summary-panel { display: flex; flex-direction: column; gap: 16px; }
+
+  .overall-status {
+    padding: 16px;
+    border-radius: 10px;
+    border: 1px solid;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .overall-status.all-safe { background: var(--green-dim); border-color: rgba(0,229,160,0.3); }
+  .overall-status.has-warn { background: var(--amber-dim); border-color: rgba(255,184,0,0.3); }
+  .overall-status.has-danger { background: var(--red-dim); border-color: rgba(255,59,92,0.3); }
+  .status-icon { font-size: 28px; }
+  .status-text .title { font-size: 15px; font-weight: 700; }
+  .status-text .sub { font-size: 12px; color: var(--text2); margin-top: 2px; }
+
+  /* HEATMAP */
+  .heatmap-section { margin-bottom: 20px; }
+  .heatmap-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text3);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #heatmap-container {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    min-height: 80px;
+  }
+  .heatmap-words {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    line-height: 1.8;
+  }
+  .hw {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: default;
+    transition: opacity 0.2s;
+  }
+
+  /* COST ESTIMATOR */
+  .cost-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  @media (max-width: 700px) { .cost-grid { grid-template-columns: 1fr; } }
+
+  .cost-input-wrap label {
+    font-size: 11px;
+    color: var(--text3);
+    display: block;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .cost-input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    outline: none;
+  }
+  .cost-input:focus { border-color: var(--cyan); }
+
+  .cost-results {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  @media (max-width: 700px) { .cost-results { grid-template-columns: 1fr; } }
+
+  .cost-result-card {
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    padding: 14px;
+    text-align: center;
+  }
+  .cost-result-card .cv {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--cyan);
+  }
+  .cost-result-card .cl {
+    font-size: 11px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-top: 4px;
+  }
+
+  /* EXPORT */
+  .export-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn-export {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border2);
+    background: var(--surface2);
+    color: var(--text2);
+    cursor: pointer;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .btn-export:hover { border-color: var(--cyan); color: var(--cyan); }
+  .btn-export .ext { color: var(--cyan); }
+
+  /* BAR CHART section */
+  .bar-chart-wrap {
+    height: 200px;
+    position: relative;
+  }
+
+  /* Tooltip */
+  .tooltip {
+    position: absolute;
+    background: var(--surface3);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 100;
+    white-space: nowrap;
+    display: none;
+  }
+
+  /* Empty state */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    color: var(--text3);
+    text-align: center;
+    gap: 8px;
+  }
+  .empty-icon { font-size: 40px; opacity: 0.4; }
+  .empty-text { font-size: 13px; }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  /* SECTION DIVIDER */
+  .section-gap { margin-bottom: 20px; }
+
+  /* GLOW EFFECT on focus card */
+  .model-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 16px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .token-breakdown-bar {
+    height: 20px;
+    border-radius: 6px;
+    overflow: hidden;
+    display: flex;
+    margin-top: 10px;
+  }
+  .tb-input { background: var(--cyan); }
+  .tb-output { background: var(--purple); }
+  .tb-free { background: var(--surface3); }
+
+  .legend-row {
+    display: flex;
+    gap: 14px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--text2);
+  }
+  .legend-dot { width: 8px; height: 8px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+
+<div id="app">
+  <!-- HEADER -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">⬡</div>
+      <div>
+        <div class="logo-text">Token<span>Scope</span></div>
+        <div class="logo-sub">AI Prompt Token Analyzer</div>
+      </div>
+    </div>
+    <div class="header-status">
+      <div class="pulse-dot"></div>
+      Analyzing in real-time · All calculations local
+    </div>
+  </header>
+
+  <!-- MAIN GRID: Input + Summary -->
+  <div class="main-grid section-gap">
+    <!-- INPUT PANEL -->
+    <div class="card input-panel">
+      <div class="card-title"><span class="icon">✎</span> Prompt Input</div>
+      <textarea id="prompt-input" placeholder="Paste or type your prompt here… Token counts update in real time."></textarea>
+
+      <div class="stats-strip">
+        <div class="stat-pill">
+          <div class="val" id="char-count">0</div>
+          <div class="lbl">Characters</div>
+        </div>
+        <div class="stat-pill">
+          <div class="val" id="word-count">0</div>
+          <div class="lbl">Words</div>
+        </div>
+        <div class="stat-pill">
+          <div class="val" id="sent-count">0</div>
+          <div class="lbl">Sentences</div>
+        </div>
+        <div class="stat-pill">
+          <div class="val" id="para-count">0</div>
+          <div class="lbl">Paragraphs</div>
+        </div>
+      </div>
+
+      <div class="output-config">
+        <label>Estimated Output Tokens (adjustable)</label>
+        <div class="slider-row">
+          <input type="range" id="output-slider" min="0" max="8000" value="500" step="50">
+          <div class="slider-val" id="output-val">500</div>
+        </div>
+      </div>
+
+      <div class="action-row" style="margin-top:14px;">
+        <button class="btn btn-ghost" onclick="clearPrompt()">✕ Clear</button>
+        <button class="btn btn-ghost" onclick="loadSample()">↺ Load Sample</button>
+      </div>
+    </div>
+
+    <!-- SUMMARY PANEL -->
+    <div class="card summary-panel">
+      <div class="card-title"><span class="icon">◎</span> Analysis Overview</div>
+
+      <div id="overall-status" class="overall-status all-safe">
+        <div class="status-icon">⬡</div>
+        <div class="status-text">
+          <div class="title" id="status-title">Awaiting Input</div>
+          <div class="sub" id="status-sub">Type or paste a prompt to begin analysis</div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;">
+        <div class="bar-chart-wrap">
+          <canvas id="comparison-chart"></canvas>
+        </div>
+        <div class="legend-row" style="justify-content:center; margin-top:12px;">
+          <div class="legend-item"><div class="legend-dot" style="background:var(--gpt-color)"></div> GPT-5.5</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--claude-color)"></div> Claude 4</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--gemini-color)"></div> Gemini 2.5 Pro</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODEL CARDS -->
+  <div class="models-grid section-gap">
+    <!-- GPT -->
+    <div class="model-card safe" id="card-gpt">
+      <div class="model-header">
+        <div class="model-name-row">
+          <div class="model-dot" style="background:var(--gpt-color)"></div>
+          <div>
+            <div class="model-name">GPT-5.5</div>
+            <div class="model-family">OpenAI</div>
+          </div>
+        </div>
+        <div class="status-badge badge-safe" id="badge-gpt">SAFE</div>
+      </div>
+
+      <div class="chart-wrap"><canvas id="chart-gpt"></canvas></div>
+
+      <hr class="divider">
+
+      <div class="token-row"><span class="token-label">Input Tokens</span><span class="token-val input-t" id="gpt-input">—</span></div>
+      <div class="token-row"><span class="token-label">Output Tokens</span><span class="token-val output-t" id="gpt-output">—</span></div>
+      <div class="token-row"><span class="token-label">Total Tokens</span><span class="token-val total-t" id="gpt-total">—</span></div>
+      <div class="token-row"><span class="token-label">Remaining</span><span class="token-val remain-t" id="gpt-remain">—</span></div>
+
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-fill fill-safe" id="bar-gpt" style="width:0%"></div>
+      </div>
+      <div class="context-stats">
+        <span class="ctx-pct" id="pct-gpt">0.00%</span>
+        <span class="ctx-window">400K context</span>
+      </div>
+
+      <div class="token-breakdown-bar" id="breakdown-gpt">
+        <div class="tb-input" style="width:0%"></div>
+        <div class="tb-output" style="width:0%"></div>
+        <div class="tb-free" style="flex:1"></div>
+      </div>
+      <div class="legend-row">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--cyan)"></div>Input</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div>Output</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--surface3)"></div>Free</div>
+      </div>
+    </div>
+
+    <!-- CLAUDE -->
+    <div class="model-card safe" id="card-claude">
+      <div class="model-header">
+        <div class="model-name-row">
+          <div class="model-dot" style="background:var(--claude-color)"></div>
+          <div>
+            <div class="model-name">Claude 4</div>
+            <div class="model-family">Anthropic</div>
+          </div>
+        </div>
+        <div class="status-badge badge-safe" id="badge-claude">SAFE</div>
+      </div>
+
+      <div class="chart-wrap"><canvas id="chart-claude"></canvas></div>
+
+      <hr class="divider">
+
+      <div class="token-row"><span class="token-label">Input Tokens</span><span class="token-val input-t" id="claude-input">—</span></div>
+      <div class="token-row"><span class="token-label">Output Tokens</span><span class="token-val output-t" id="claude-output">—</span></div>
+      <div class="token-row"><span class="token-label">Total Tokens</span><span class="token-val total-t" id="claude-total">—</span></div>
+      <div class="token-row"><span class="token-label">Remaining</span><span class="token-val remain-t" id="claude-remain">—</span></div>
+
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-fill fill-safe" id="bar-claude" style="width:0%"></div>
+      </div>
+      <div class="context-stats">
+        <span class="ctx-pct" id="pct-claude">0.00%</span>
+        <span class="ctx-window">200K context</span>
+      </div>
+
+      <div class="token-breakdown-bar" id="breakdown-claude">
+        <div class="tb-input" style="width:0%"></div>
+        <div class="tb-output" style="width:0%"></div>
+        <div class="tb-free" style="flex:1"></div>
+      </div>
+      <div class="legend-row">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--cyan)"></div>Input</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div>Output</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--surface3)"></div>Free</div>
+      </div>
+    </div>
+
+    <!-- GEMINI -->
+    <div class="model-card safe" id="card-gemini">
+      <div class="model-header">
+        <div class="model-name-row">
+          <div class="model-dot" style="background:var(--gemini-color)"></div>
+          <div>
+            <div class="model-name">Gemini 2.5 Pro</div>
+            <div class="model-family">Google DeepMind</div>
+          </div>
+        </div>
+        <div class="status-badge badge-safe" id="badge-gemini">SAFE</div>
+      </div>
+
+      <div class="chart-wrap"><canvas id="chart-gemini"></canvas></div>
+
+      <hr class="divider">
+
+      <div class="token-row"><span class="token-label">Input Tokens</span><span class="token-val input-t" id="gemini-input">—</span></div>
+      <div class="token-row"><span class="token-label">Output Tokens</span><span class="token-val output-t" id="gemini-output">—</span></div>
+      <div class="token-row"><span class="token-label">Total Tokens</span><span class="token-val total-t" id="gemini-total">—</span></div>
+      <div class="token-row"><span class="token-label">Remaining</span><span class="token-val remain-t" id="gemini-remain">—</span></div>
+
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-fill fill-safe" id="bar-gemini" style="width:0%"></div>
+      </div>
+      <div class="context-stats">
+        <span class="ctx-pct" id="pct-gemini">0.00%</span>
+        <span class="ctx-window">1M context</span>
+      </div>
+
+      <div class="token-breakdown-bar" id="breakdown-gemini">
+        <div class="tb-input" style="width:0%"></div>
+        <div class="tb-output" style="width:0%"></div>
+        <div class="tb-free" style="flex:1"></div>
+      </div>
+      <div class="legend-row">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--cyan)"></div>Input</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div>Output</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--surface3)"></div>Free</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOKEN HEATMAP -->
+  <div class="card heatmap-section section-gap">
+    <div class="card-title"><span class="icon">◈</span> Token Density Heatmap — Word-Level Token Weight Visualization</div>
+    <div id="heatmap-container">
+      <div class="empty-state">
+        <div class="empty-icon">◈</div>
+        <div class="empty-text">Enter a prompt to see token density visualization</div>
+      </div>
+    </div>
+    <div class="legend-row" style="margin-top:10px;">
+      <span style="font-size:11px;color:var(--text3)">Token weight:</span>
+      <div style="display:flex;gap:4px;align-items:center;">
+        <div style="width:14px;height:14px;border-radius:3px;background:rgba(0,212,255,0.15)"></div>
+        <span style="font-size:11px;color:var(--text2)">Low</span>
+      </div>
+      <div style="display:flex;gap:4px;align-items:center;">
+        <div style="width:14px;height:14px;border-radius:3px;background:rgba(0,212,255,0.45)"></div>
+        <span style="font-size:11px;color:var(--text2)">Medium</span>
+      </div>
+      <div style="display:flex;gap:4px;align-items:center;">
+        <div style="width:14px;height:14px;border-radius:3px;background:rgba(155,89,255,0.7)"></div>
+        <span style="font-size:11px;color:var(--text2)">High</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- COST ESTIMATOR -->
+  <div class="card section-gap">
+    <div class="card-title"><span class="icon">$</span> Cost Estimator</div>
+    <div class="cost-grid">
+      <div class="cost-input-wrap">
+        <label>Input Price ($ per 1M tokens)</label>
+        <input class="cost-input" id="price-input" type="number" value="2.50" step="0.01" min="0">
+      </div>
+      <div class="cost-input-wrap">
+        <label>Output Price ($ per 1M tokens)</label>
+        <input class="cost-input" id="price-output" type="number" value="10.00" step="0.01" min="0">
+      </div>
+      <div class="cost-input-wrap">
+        <label>Daily Requests Volume</label>
+        <input class="cost-input" id="daily-reqs" type="number" value="1000" step="100" min="1">
+      </div>
+    </div>
+    <div class="cost-results">
+      <div class="cost-result-card">
+        <div class="cv" id="cost-per-req">$0.000000</div>
+        <div class="cl">Per Request</div>
+      </div>
+      <div class="cost-result-card">
+        <div class="cv" id="cost-daily">$0.00</div>
+        <div class="cl">Daily Cost</div>
+      </div>
+      <div class="cost-result-card">
+        <div class="cv" id="cost-monthly">$0.00</div>
+        <div class="cl">Monthly Cost</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EXPORT -->
+  <div class="card section-gap">
+    <div class="card-title"><span class="icon">↑</span> Export Results</div>
+    <div class="export-row">
+      <button class="btn-export" onclick="exportCSV()">
+        <span class="ext">CSV</span> Export Spreadsheet
+      </button>
+      <button class="btn-export" onclick="exportJSON()">
+        <span class="ext">JSON</span> Export Data
+      </button>
+      <button class="btn-export" onclick="exportPDF()">
+        <span class="ext">PDF</span> Export Report
+      </button>
+      <button class="btn-export" onclick="copyResults()">
+        <span class="ext">⎘</span> Copy Summary
+      </button>
+    </div>
+  </div>
+
+</div><!-- /app -->
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+// ============================================================
+// TOKEN ESTIMATION ENGINE
+// ============================================================
+
+const MODELS = {
+  gpt:    { name: 'GPT-5.5',       family: 'OpenAI',        window: 400000,   ratio: 1.0,   color: '#10A37F' },
+  claude: { name: 'Claude 4',      family: 'Anthropic',     window: 200000,   ratio: 1.03,  color: '#D97706' },
+  gemini: { name: 'Gemini 2.5 Pro',family: 'Google DeepMind',window: 1000000, ratio: 0.94,  color: '#4285F4' },
+};
+
+// BPE-style approximation: GPT uses ~1 token per 4 chars average
+// but accounts for punctuation, whitespace, special chars, and subwords
+function estimateTokens(text, model) {
+  if (!text || !text.trim()) return 0;
+
+  // Step 1: split into word-level tokens like real BPE
+  const words = text.match(/\S+/g) || [];
+  let tokenCount = 0;
+
+  words.forEach(word => {
+    // Numbers: each number group ~ 1 token
+    if (/^\d+$/.test(word)) {
+      tokenCount += Math.ceil(word.length / 3);
+    }
+    // Long words get split into subwords
+    else if (word.length <= 4) {
+      tokenCount += 1;
+    } else if (word.length <= 8) {
+      tokenCount += 1.3;
+    } else if (word.length <= 12) {
+      tokenCount += 1.8;
+    } else {
+      tokenCount += Math.ceil(word.length / 4.5);
+    }
+    // Extra tokens for punctuation attached to words
+    const punctMatches = (word.match(/[.,!?;:'"()\[\]{}\-\/\\@#$%^&*]/g) || []).length;
+    tokenCount += punctMatches * 0.4;
+  });
+
+  // Whitespace and newlines contribute overhead
+  const newlines = (text.match(/\n/g) || []).length;
+  tokenCount += newlines * 0.5;
+
+  tokenCount = Math.round(tokenCount);
+
+  // Apply per-model ratio
+  return Math.round(tokenCount * MODELS[model].ratio);
+}
+
+// Word-level token weight for heatmap (normalized 0-1)
+function wordTokenWeight(word) {
+  if (!word) return 0;
+  const w = word.replace(/[.,!?;:'"()\[\]{}]/g, '');
+  if (/^\d+$/.test(w)) return Math.min(1, w.length / 6);
+  if (w.length <= 3) return 0.15;
+  if (w.length <= 5) return 0.35;
+  if (w.length <= 8) return 0.55;
+  if (w.length <= 12) return 0.75;
+  return Math.min(1, 0.75 + (w.length - 12) * 0.03);
+}
+
+// ============================================================
+// TEXT STATISTICS
+// ============================================================
+function countStats(text) {
+  const chars = text.length;
+  const words = text.trim() ? (text.match(/\S+/g) || []).length : 0;
+  const sentences = text.trim() ? (text.match(/[^.!?\n]+[.!?]+/g) || []).length : 0;
+  const paragraphs = text.trim() ? text.split(/\n\s*\n+/).filter(p => p.trim()).length : 0;
+  return { chars, words, sentences, paragraphs };
+}
+
+// ============================================================
+// CHART INSTANCES
+// ============================================================
+let doughnutCharts = {};
+let comparisonChart = null;
+
+function initDoughnut(id, color) {
+  const ctx = document.getElementById(id).getContext('2d');
+  const chart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [0, 100],
+        backgroundColor: [color, '#1E2D50'],
+        borderWidth: 0,
+        hoverOffset: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      cutout: '72%',
+      animation: { animateRotate: true, duration: 600 },
+      plugins: {
+        legend: { display: false },
+        tooltip: { enabled: false },
+      }
+    }
+  });
+  return chart;
+}
+
+function initComparisonChart() {
+  const ctx = document.getElementById('comparison-chart').getContext('2d');
+  comparisonChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['Input Tokens', 'Output Tokens', 'Total Tokens'],
+      datasets: [
+        { label: 'GPT-5.5',        data: [0,0,0], backgroundColor: 'rgba(16,163,127,0.8)',  borderRadius: 4 },
+        { label: 'Claude 4',       data: [0,0,0], backgroundColor: 'rgba(217,119,6,0.8)',  borderRadius: 4 },
+        { label: 'Gemini 2.5 Pro', data: [0,0,0], backgroundColor: 'rgba(66,133,244,0.8)', borderRadius: 4 },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#162040',
+          titleColor: '#8892AA',
+          bodyColor: '#E8EDF5',
+          borderColor: '#2A3D60',
+          borderWidth: 1,
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: ${fmt(ctx.raw)}`
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#5A6580', font: { size: 11, family: 'Space Grotesk' } }, grid: { color: '#1E2D50' } },
+        y: { ticks: { color: '#5A6580', font: { family: 'JetBrains Mono', size: 10 } }, grid: { color: '#1E2D50' } }
+      }
+    }
+  });
+}
+
+// ============================================================
+// UPDATE UI
+// ============================================================
+const fmt = n => n.toLocaleString();
+
+function getStatus(pct) {
+  if (pct < 70) return 'safe';
+  if (pct < 90) return 'warn';
+  return 'danger';
+}
+
+function updateModel(key, inputTok, outputTok) {
+  const model = MODELS[key];
+  const total = inputTok + outputTok;
+  const pct = Math.min(100, (total / model.window) * 100);
+  const remain = Math.max(0, model.window - total);
+  const status = getStatus(pct);
+
+  // Text values
+  document.getElementById(`${key}-input`).textContent = fmt(inputTok);
+  document.getElementById(`${key}-output`).textContent = fmt(outputTok);
+  document.getElementById(`${key}-total`).textContent = fmt(total);
+  document.getElementById(`${key}-remain`).textContent = fmt(remain);
+
+  // Progress bar
+  const bar = document.getElementById(`bar-${key}`);
+  bar.style.width = Math.min(100, pct) + '%';
+  bar.className = `progress-bar-fill fill-${status}`;
+
+  // Percentage
+  document.getElementById(`pct-${key}`).textContent = pct.toFixed(2) + '%';
+
+  // Badge
+  const badge = document.getElementById(`badge-${key}`);
+  badge.className = `status-badge badge-${status}`;
+  badge.textContent = status === 'safe' ? '✔ SAFE' : status === 'warn' ? '⚠ WARN' : '✕ OVER';
+
+  // Card border
+  const card = document.getElementById(`card-${key}`);
+  card.className = `model-card ${status}`;
+
+  // Doughnut
+  if (doughnutCharts[key]) {
+    doughnutCharts[key].data.datasets[0].data = [pct, 100 - pct];
+    doughnutCharts[key].update('none');
+  }
+
+  // Breakdown bar
+  const inputPct = (inputTok / model.window) * 100;
+  const outputPct = (outputTok / model.window) * 100;
+  const bd = document.getElementById(`breakdown-${key}`);
+  if (bd) {
+    bd.children[0].style.width = Math.min(100, inputPct) + '%';
+    bd.children[1].style.width = Math.min(100 - inputPct, outputPct) + '%';
+  }
+
+  return { inputTok, outputTok, total, pct, remain, status };
+}
+
+function updateOverallStatus(statuses) {
+  const el = document.getElementById('overall-status');
+  const title = document.getElementById('status-title');
+  const sub = document.getElementById('status-sub');
+
+  if (statuses.some(s => s === 'danger')) {
+    el.className = 'overall-status has-danger';
+    title.textContent = '✕ Context Limit Exceeded';
+    sub.textContent = 'One or more models cannot handle this prompt';
+  } else if (statuses.some(s => s === 'warn')) {
+    el.className = 'overall-status has-warn';
+    title.textContent = '⚠ Approaching Context Limits';
+    sub.textContent = 'Some models are near their context window';
+  } else {
+    el.className = 'overall-status all-safe';
+    title.textContent = '✔ Safe to Submit to All Models';
+    sub.textContent = 'Prompt fits comfortably within all context windows';
+  }
+}
+
+// ============================================================
+// HEATMAP
+// ============================================================
+function updateHeatmap(text) {
+  const container = document.getElementById('heatmap-container');
+  if (!text.trim()) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">◈</div><div class="empty-text">Enter a prompt to see token density visualization</div></div>`;
+    return;
+  }
+
+  // Split preserving spaces/newlines for display
+  const tokens = text.split(/(\s+)/);
+  let html = '<div class="heatmap-words">';
+
+  tokens.forEach(tok => {
+    if (!tok) return;
+    if (/^\s+$/.test(tok)) {
+      // Preserve newlines
+      if (tok.includes('\n')) {
+        html += '<br style="width:100%;display:block;">';
+      } else {
+        html += ' ';
+      }
+      return;
+    }
+    const weight = wordTokenWeight(tok);
+    let bg, color;
+    if (weight < 0.2) {
+      bg = 'rgba(0,212,255,0.1)'; color = 'rgba(232,237,245,0.6)';
+    } else if (weight < 0.4) {
+      bg = 'rgba(0,212,255,0.2)'; color = 'rgba(232,237,245,0.75)';
+    } else if (weight < 0.6) {
+      bg = 'rgba(0,212,255,0.38)'; color = '#E8EDF5';
+    } else if (weight < 0.8) {
+      bg = 'rgba(155,89,255,0.45)'; color = '#E8EDF5';
+    } else {
+      bg = 'rgba(155,89,255,0.75)'; color = '#fff';
+    }
+    const estTok = Math.max(1, Math.round(weight * 3));
+    html += `<span class="hw" style="background:${bg};color:${color}" title="~${estTok} token${estTok>1?'s':''}">${tok}</span>`;
+  });
+
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+// ============================================================
+// COST ESTIMATOR
+// ============================================================
+function updateCosts(inputTok, outputTok) {
+  const priceIn = parseFloat(document.getElementById('price-input').value) || 0;
+  const priceOut = parseFloat(document.getElementById('price-output').value) || 0;
+  const dailyReqs = parseInt(document.getElementById('daily-reqs').value) || 1;
+
+  const costPerReq = (inputTok / 1e6) * priceIn + (outputTok / 1e6) * priceOut;
+  const daily = costPerReq * dailyReqs;
+  const monthly = daily * 30;
+
+  document.getElementById('cost-per-req').textContent = '$' + costPerReq.toFixed(6);
+  document.getElementById('cost-daily').textContent = '$' + daily.toFixed(2);
+  document.getElementById('cost-monthly').textContent = '$' + monthly.toFixed(2);
+}
+
+// ============================================================
+// MAIN ANALYSIS FUNCTION
+// ============================================================
+let lastResults = {};
+
+function analyze() {
+  const text = document.getElementById('prompt-input').value;
+  const outputTokens = parseInt(document.getElementById('output-slider').value) || 0;
+
+  // Stats
+  const stats = countStats(text);
+  document.getElementById('char-count').textContent = fmt(stats.chars);
+  document.getElementById('word-count').textContent = fmt(stats.words);
+  document.getElementById('sent-count').textContent = fmt(stats.sentences);
+  document.getElementById('para-count').textContent = fmt(stats.paragraphs);
+
+  // Tokens per model
+  const gptIn    = estimateTokens(text, 'gpt');
+  const claudeIn = estimateTokens(text, 'claude');
+  const geminiIn = estimateTokens(text, 'gemini');
+
+  const r = {
+    gpt:    updateModel('gpt',    gptIn,    outputTokens),
+    claude: updateModel('claude', claudeIn, outputTokens),
+    gemini: updateModel('gemini', geminiIn, outputTokens),
+    stats,
+    outputTokens,
+  };
+
+  lastResults = r;
+
+  // Overall status
+  updateOverallStatus([r.gpt.status, r.claude.status, r.gemini.status]);
+
+  // Comparison chart
+  if (comparisonChart) {
+    comparisonChart.data.datasets[0].data = [gptIn,    outputTokens, r.gpt.total];
+    comparisonChart.data.datasets[1].data = [claudeIn, outputTokens, r.claude.total];
+    comparisonChart.data.datasets[2].data = [geminiIn, outputTokens, r.gemini.total];
+    comparisonChart.update();
+  }
+
+  // Heatmap
+  updateHeatmap(text);
+
+  // Costs
+  const avgInput = Math.round((gptIn + claudeIn + geminiIn) / 3);
+  updateCosts(avgInput, outputTokens);
+}
+
+// ============================================================
+// EXPORT
+// ============================================================
+function getExportData() {
+  const r = lastResults;
+  if (!r.gpt) return null;
+  return {
+    timestamp: new Date().toISOString(),
+    prompt_stats: {
+      characters: r.stats.chars,
+      words: r.stats.words,
+      sentences: r.stats.sentences,
+      paragraphs: r.stats.paragraphs,
+    },
+    output_tokens_configured: r.outputTokens,
+    models: {
+      'GPT-5.5': {
+        context_window: 400000,
+        input_tokens: r.gpt.inputTok,
+        output_tokens: r.outputTokens,
+        total_tokens: r.gpt.total,
+        remaining_tokens: r.gpt.remain,
+        context_used_pct: r.gpt.pct.toFixed(2),
+        status: r.gpt.status,
+      },
+      'Claude 4': {
+        context_window: 200000,
+        input_tokens: r.claude.inputTok,
+        output_tokens: r.outputTokens,
+        total_tokens: r.claude.total,
+        remaining_tokens: r.claude.remain,
+        context_used_pct: r.claude.pct.toFixed(2),
+        status: r.claude.status,
+      },
+      'Gemini 2.5 Pro': {
+        context_window: 1000000,
+        input_tokens: r.gemini.inputTok,
+        output_tokens: r.outputTokens,
+        total_tokens: r.gemini.total,
+        remaining_tokens: r.gemini.remain,
+        context_used_pct: r.gemini.pct.toFixed(2),
+        status: r.gemini.status,
+      },
+    }
+  };
+}
+
+function exportJSON() {
+  const data = getExportData();
+  if (!data) { alert('No analysis data yet — type a prompt first.'); return; }
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  downloadBlob(blob, 'tokenscope-analysis.json');
+}
+
+function exportCSV() {
+  const data = getExportData();
+  if (!data) { alert('No analysis data yet — type a prompt first.'); return; }
+  const rows = [
+    ['TokenScope Analysis Export', data.timestamp],
+    [],
+    ['Prompt Statistics'],
+    ['Characters', data.prompt_stats.characters],
+    ['Words', data.prompt_stats.words],
+    ['Sentences', data.prompt_stats.sentences],
+    ['Paragraphs', data.prompt_stats.paragraphs],
+    [],
+    ['Model', 'Context Window', 'Input Tokens', 'Output Tokens', 'Total Tokens', 'Remaining', '% Used', 'Status'],
+    ...Object.entries(data.models).map(([name, m]) => [
+      name, m.context_window, m.input_tokens, m.output_tokens,
+      m.total_tokens, m.remaining_tokens, m.context_used_pct + '%', m.status
+    ])
+  ];
+  const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  downloadBlob(blob, 'tokenscope-analysis.csv');
+}
+
+function exportPDF() {
+  const data = getExportData();
+  if (!data) { alert('No analysis data yet — type a prompt first.'); return; }
+
+  const win = window.open('', '_blank');
+  win.document.write(`
+    <html><head><title>TokenScope Report</title>
+    <style>
+      body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; color: #111; }
+      h1 { color: #0A3D62; border-bottom: 2px solid #0A3D62; padding-bottom: 8px; }
+      h2 { color: #333; margin-top: 24px; }
+      table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+      th { background: #0A3D62; color: #fff; padding: 8px 12px; text-align: left; }
+      td { padding: 8px 12px; border-bottom: 1px solid #ddd; }
+      tr:nth-child(even) td { background: #f5f5f5; }
+      .safe { color: green; font-weight: bold; }
+      .warn { color: orange; font-weight: bold; }
+      .danger { color: red; font-weight: bold; }
+      .footer { margin-top: 40px; font-size: 12px; color: #999; }
+    </style></head><body>
+    <h1>⬡ TokenScope — Token Analysis Report</h1>
+    <p style="color:#666">${data.timestamp}</p>
+
+    <h2>Prompt Statistics</h2>
+    <table>
+      <tr><th>Metric</th><th>Value</th></tr>
+      <tr><td>Characters</td><td>${data.prompt_stats.characters.toLocaleString()}</td></tr>
+      <tr><td>Words</td><td>${data.prompt_stats.words.toLocaleString()}</td></tr>
+      <tr><td>Sentences</td><td>${data.prompt_stats.sentences.toLocaleString()}</td></tr>
+      <tr><td>Paragraphs</td><td>${data.prompt_stats.paragraphs.toLocaleString()}</td></tr>
+      <tr><td>Configured Output Tokens</td><td>${data.output_tokens_configured.toLocaleString()}</td></tr>
+    </table>
+
+    <h2>Model Analysis</h2>
+    <table>
+      <tr><th>Model</th><th>Context Window</th><th>Input Tokens</th><th>Output Tokens</th><th>Total</th><th>Remaining</th><th>% Used</th><th>Status</th></tr>
+      ${Object.entries(data.models).map(([name, m]) => `
+        <tr>
+          <td><strong>${name}</strong></td>
+          <td>${parseInt(m.context_window).toLocaleString()}</td>
+          <td>${parseInt(m.input_tokens).toLocaleString()}</td>
+          <td>${parseInt(m.output_tokens).toLocaleString()}</td>
+          <td>${parseInt(m.total_tokens).toLocaleString()}</td>
+          <td>${parseInt(m.remaining_tokens).toLocaleString()}</td>
+          <td>${m.context_used_pct}%</td>
+          <td class="${m.status}">${m.status.toUpperCase()}</td>
+        </tr>
+      `).join('')}
+    </table>
+
+    <div class="footer">Generated by TokenScope · All calculations performed locally in-browser</div>
+    <script>window.print();<\/script>
+    </body></html>
+  `);
+  win.document.close();
+}
+
+function copyResults() {
+  const data = getExportData();
+  if (!data) { alert('No analysis data yet.'); return; }
+  const text = [
+    '=== TokenScope Analysis ===',
+    `Characters: ${data.prompt_stats.characters.toLocaleString()}`,
+    `Words: ${data.prompt_stats.words.toLocaleString()}`,
+    '',
+    ...Object.entries(data.models).map(([name, m]) =>
+      `${name}: ${parseInt(m.input_tokens).toLocaleString()} input + ${parseInt(m.output_tokens).toLocaleString()} output = ${parseInt(m.total_tokens).toLocaleString()} total (${m.context_used_pct}% of ${parseInt(m.context_window).toLocaleString()} ctx) — ${m.status.toUpperCase()}`
+    )
+  ].join('\n');
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector('.btn-export:last-child');
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<span class="ext">✓</span> Copied!';
+    setTimeout(() => btn.innerHTML = orig, 2000);
+  });
+}
+
+function downloadBlob(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ============================================================
+// UTILITIES
+// ============================================================
+function clearPrompt() {
+  document.getElementById('prompt-input').value = '';
+  analyze();
+}
+
+function loadSample() {
+  document.getElementById('prompt-input').value = `You are an expert data scientist and machine learning engineer with 15 years of experience building production ML systems at Fortune 500 companies.
+
+I need your help designing a comprehensive end-to-end MLOps pipeline for a real-time fraud detection system that processes 50,000 transactions per second. The system must achieve sub-10ms latency for fraud scoring.
+
+Please provide detailed guidance on:
+
+1. Feature Engineering Pipeline
+   - Real-time feature computation using Apache Kafka and Flink
+   - Feature store design (online vs offline)
+   - Handling imbalanced datasets (fraud rate ~0.1%)
+   - Feature drift monitoring
+
+2. Model Architecture
+   - Ensemble approach combining XGBoost, neural networks, and rule-based systems
+   - Graph neural networks for detecting fraud rings
+   - Federated learning for cross-institution data sharing
+
+3. Infrastructure & Deployment
+   - Kubernetes-based serving infrastructure
+   - A/B testing framework for model updates
+   - Shadow mode deployment strategy
+   - Circuit breakers and fallback mechanisms
+
+4. Monitoring & Observability
+   - Real-time performance dashboards
+   - Concept drift detection
+   - Automated retraining triggers
+   - Business metrics tracking (precision, recall, F1, AUC-ROC)
+
+Please include code examples in Python where relevant, architecture diagrams in ASCII, and estimated infrastructure costs on AWS.`;
+  analyze();
+}
+
+// ============================================================
+// INIT
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+  // Init doughnut charts
+  doughnutCharts.gpt    = initDoughnut('chart-gpt',    '#10A37F');
+  doughnutCharts.claude = initDoughnut('chart-claude',  '#D97706');
+  doughnutCharts.gemini = initDoughnut('chart-gemini',  '#4285F4');
+
+  // Init comparison bar chart
+  initComparisonChart();
+
+  // Event listeners
+  const input = document.getElementById('prompt-input');
+  let debounceTimer;
+  input.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(analyze, 80);
+  });
+
+  document.getElementById('output-slider').addEventListener('input', e => {
+    document.getElementById('output-val').textContent = parseInt(e.target.value).toLocaleString();
+    analyze();
+  });
+
+  ['price-input', 'price-output', 'daily-reqs'].forEach(id => {
+    document.getElementById(id).addEventListener('input', () => {
+      if (lastResults.gpt) {
+        const avgInput = Math.round((lastResults.gpt.inputTok + lastResults.claude.inputTok + lastResults.gemini.inputTok) / 3);
+        updateCosts(avgInput, lastResults.outputTokens);
+      }
+    });
+  });
+
+  // Initial state
+  analyze();
+});
+</script>
+</body>
+</html>
